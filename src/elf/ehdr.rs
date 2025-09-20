@@ -1,5 +1,5 @@
 use crate::elf::ehdr::{
-    e_ident::{EI_NIDENT, EIdent},
+    e_ident::{EI_NIDENT, EIdent, data::EIData},
     e_machine::EMachine,
     e_type::EType,
 };
@@ -27,6 +27,7 @@ pub enum EhdrParseError {
     InvalidEIdentVersion,
     InvalidEType(u16),
     InvalidEMachine(u16),
+    EndianNotSupported(EIData),
 }
 
 impl TryFrom<&[u8]> for Ehdr32 {
@@ -40,11 +41,17 @@ impl TryFrom<&[u8]> for Ehdr32 {
 
             let e_type_hi = value[EI_NIDENT];
             let e_type_lo = value[EI_NIDENT + 1];
-            let e_type = EType::try_from(u16::from_ne_bytes([e_type_hi, e_type_lo]))?;
+            let e_type = EType::try_from(
+                u16_from_classed_bytes([e_type_hi, e_type_lo], &e_ident.data)
+                    .ok_or(EhdrParseError::EndianNotSupported(e_ident.data))?,
+            )?;
 
             let e_machine_hi = value[EI_NIDENT + 2];
             let e_machine_lo = value[EI_NIDENT + 3];
-            let e_machine = EMachine::try_from(u16::from_ne_bytes([e_machine_hi, e_machine_lo]))?;
+            let e_machine = EMachine::try_from(
+                u16_from_classed_bytes([e_machine_hi, e_machine_lo], &e_ident.data)
+                    .ok_or(EhdrParseError::EndianNotSupported(e_ident.data))?,
+            )?;
 
             Ok(Self {
                 e_ident,
@@ -52,5 +59,13 @@ impl TryFrom<&[u8]> for Ehdr32 {
                 e_machine,
             })
         }
+    }
+}
+
+fn u16_from_classed_bytes(bytes: [u8; 2], data: &EIData) -> Option<u16> {
+    match data {
+        EIData::Lsb => Some(u16::from_le_bytes(bytes)),
+        EIData::Msb => Some(u16::from_be_bytes(bytes)),
+        _ => None,
     }
 }
